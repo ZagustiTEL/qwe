@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Список пользователей</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Список пользователей</h1>
+            <div class="user-info">
+                <span>Пользователь: {{ username }}</span>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Назад</a>
+                <a href="{{ url_for('logout') }}" class="btn btn-logout">Выйти</a>
+            </div>
+        </div>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        {% if users %}
+            <div class="users-list">
+                <div class="users-header">
+                    <span class="user-number">#</span>
+                    <span class="user-name">Имя пользователя</span>
+                    <span class="user-password">Пароль</span>
+                </div>
+                {% for user in users %}
+                    <div class="user-item">
+                        <span class="user-number">{{ loop.index }}</span>
+                        <span class="user-name">{{ user.username }}</span>
+                        <span class="user-password">{{ user.password }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="no-users">Пользователей не найдено</p>
+        {% endif %}
+        
+        <div class="footer">
+            <p>Всего пользователей: {{ users|length }}</p>
+        </div>
+    </div>
+</body>
+</html>

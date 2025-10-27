@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Генератор паролей</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="generator-container">
+            <div class="header">
+                <h2>Генератор паролей</h2>
+                <div class="user-info">
+                    <span>Пользователь: {{ username }}</span>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Назад</a>
+                    <a href="{{ url_for('logout') }}" class="btn btn-logout">Выйти</a>
+                </div>
+            </div>
+
+            <div class="generator-form">
+                <form id="passwordForm">
+                    <div class="form-group">
+                        <label for="length">Длина пароля:</label>
+                        <input type="number" id="length" value="12" min="4" max="50" class="form-control">
+                    </div>
+                    
+                    <div class="checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="uppercase" checked>
+                            Заглавные буквы (A-Z)
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="numbers" checked>
+                            Цифры (0-9)
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="special" checked>
+                            Специальные символы (!@#$% и т.д.)
+                        </label>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="button" onclick="generatePassword()" class="btn btn-generate">
+                            Сгенерировать пароль
+                        </button>
+                        <button type="button" onclick="generateAdvancedPassword()" class="btn btn-advanced">
+                            Расширенная генерация
+                        </button>
+                    </div>
+                </form>
+
+                <div id="result" class="result-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function generatePassword() {
+            const data = {
+                length: parseInt(document.getElementById('length').value),
+                uppercase: document.getElementById('uppercase').checked,
+                numbers: document.getElementById('numbers').checked,
+                special: document.getElementById('special').checked
+            };
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                displayResult(result);
+            } catch (error) {
+                document.getElementById('result').innerHTML = 
+                    `<div class="alert alert-error"><strong>Ошибка:</strong> ${error.message}</div>`;
+            }
+        }
+
+        async function generateAdvancedPassword() {
+            const data = {
+                length: parseInt(document.getElementById('length').value),
+                uppercase: document.getElementById('uppercase').checked,
+                numbers: document.getElementById('numbers').checked,
+                special: document.getElementById('special').checked
+            };
+
+            try {
+                const response = await fetch('/generate-advanced', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                displayAdvancedResult(result);
+            } catch (error) {
+                document.getElementById('result').innerHTML = 
+                    `<div class="alert alert-error"><strong>Ошибка:</strong> ${error.message}</div>`;
+            }
+        }
+
+        function displayResult(result) {
+            const resultDiv = document.getElementById('result');
+            if (result.success) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success">
+                        <strong>Сгенерированный пароль:</strong>
+                        <div class="password-display">${result.password}</div>
+                        <button onclick="copyToClipboard('${result.password}')" class="btn btn-copy">Копировать</button>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `<div class="alert alert-error"><strong>Ошибка:</strong> ${result.error}</div>`;
+            }
+        }
+
+        function displayAdvancedResult(result) {
+            const resultDiv = document.getElementById('result');
+            if (result.success) {
+                let feedbackHtml = '';
+                if (result.feedback && result.feedback.length > 0) {
+                    feedbackHtml = `<div class="feedback"><strong>Рекомендации:</strong><ul>`;
+                    result.feedback.forEach(item => {
+                        feedbackHtml += `<li>${item}</li>`;
+                    });
+                    feedbackHtml += `</ul></div>`;
+                }
+
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success">
+                        <strong>Сгенерированный пароль:</strong>
+                        <div class="password-display">${result.password}</div>
+                        <div class="strength-info">
+                            <strong>Сложность:</strong> ${result.strength} (оценка: ${result.score}/6)
+                        </div>
+                        ${feedbackHtml}
+                        <button onclick="copyToClipboard('${result.password}')" class="btn btn-copy">Копировать</button>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `<div class="alert alert-error"><strong>Ошибка:</strong> ${result.error}</div>`;
+            }
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Пароль скопирован в буфер обмена!');
+            }).catch(err => {
+                alert('Ошибка копирования: ' + err);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель управления</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="dashboard">
+            <h2>Добро пожаловать, {{ username }}!</h2>
+            
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <div class="menu">
+                <p>Вы успешно вошли в систему. Выберите действие:</p>
+                <div class="menu-buttons">
+                    <a href="{{ url_for('password_generator') }}" class="btn btn-primary">Генератор паролей</a>
+                    <a href="{{ url_for('logout') }}" class="btn btn-logout">Выйти</a>
+                    <a href="{{ url_for('users') }}" class="btn btn-secondary">Список пользователей</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
