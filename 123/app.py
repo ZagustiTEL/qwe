@@ -3,6 +3,7 @@ import os
 import random
 import string
 import sqlite3
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Замените на случайный ключ
@@ -19,6 +20,29 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS password_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            password TEXT NOT NULL,
+            length INTEGER NOT NULL,
+            strength TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (username) REFERENCES users (username)
+        )
+    ''')
+    # Новая таблица для менеджера паролей
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS password_manager (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            service TEXT NOT NULL,
+            login TEXT NOT NULL,
+            password TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (username) REFERENCES users (username)
         )
     ''')
     conn.commit()
@@ -85,6 +109,76 @@ def verify_password(username, password):
     if user:
         return user['password'] == password
     return False
+
+# ==================== МЕНЕДЖЕР ПАРОЛЕЙ ====================
+
+def save_password_entry(username, service, login, password):
+    """Сохранение записи в менеджер паролей"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            'INSERT INTO password_manager (username, service, login, password) VALUES (?, ?, ?, ?)',
+            (username, service, login, password)
+        )
+        conn.commit()
+        success = True
+    except Exception as e:
+        print(f"Ошибка при сохранении в менеджер паролей: {e}")
+        success = False
+    finally:
+        conn.close()
+    return success
+
+def get_password_entries(username):
+    """Получение всех записей менеджера паролей для пользователя"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, service, login, password, timestamp 
+        FROM password_manager 
+        WHERE username = ? 
+        ORDER BY timestamp DESC
+    ''', (username,))
+    entries = cursor.fetchall()
+    conn.close()
+    return entries
+
+def delete_password_entry(entry_id, username):
+    """Удаление записи из менеджера паролей"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            'DELETE FROM password_manager WHERE id = ? AND username = ?',
+            (entry_id, username)
+        )
+        conn.commit()
+        success = True
+    except Exception as e:
+        print(f"Ошибка при удалении записи: {e}")
+        success = False
+    finally:
+        conn.close()
+    return success
+
+def update_password_entry(entry_id, username, service, login, password):
+    """Обновление записи в менеджере паролей"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            'UPDATE password_manager SET service = ?, login = ?, password = ? WHERE id = ? AND username = ?',
+            (service, login, password, entry_id, username)
+        )
+        conn.commit()
+        success = True
+    except Exception as e:
+        print(f"Ошибка при обновлении записи: {e}")
+        success = False
+    finally:
+        conn.close()
+    return success
 
 # ==================== ГЕНЕРАТОР ПАРОЛЕЙ ====================
 
@@ -157,6 +251,39 @@ def check_password_strength(password):
         'feedback': feedback
     }
 
+def save_password_history(username, password, length, strength):
+    """Сохранение сгенерированного пароля в историю"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            'INSERT INTO password_history (username, password, length, strength) VALUES (?, ?, ?, ?)',
+            (username, password, length, strength)
+        )
+        conn.commit()
+        success = True
+    except Exception as e:
+        print(f"Ошибка при сохранении в историю: {e}")
+        success = False
+    finally:
+        conn.close()
+    return success
+
+def get_password_history(username, limit=10):
+    """Получение истории паролей пользователя"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT password, length, strength, timestamp 
+        FROM password_history 
+        WHERE username = ? 
+        ORDER BY timestamp DESC 
+        LIMIT ?
+    ''', (username, limit))
+    history = cursor.fetchall()
+    conn.close()
+    return history
+
 # ==================== МАРШРУТЫ ====================
 
 @app.route('/')
@@ -214,7 +341,9 @@ def password_generator():
     if 'username' not in session:
         return redirect(url_for('login'))
     
-    return render_template('index.html', username=session['username'])
+    # Получаем историю паролей
+    history = get_password_history(session['username'])
+    return render_template('index.html', username=session['username'], history=history)
 
 @app.route('/generate', methods=['POST'])
 def generate():
@@ -242,6 +371,10 @@ def generate():
             })
         
         password = generate_password(length, use_uppercase, use_numbers, use_special)
+        
+        # Сохраняем в историю
+        strength_analysis = check_password_strength(password)
+        save_password_history(session['username'], password, length, strength_analysis['strength'])
         
         return jsonify({
             'success': True,
@@ -281,6 +414,9 @@ def generate_advanced():
         password = generate_password(length, use_uppercase, use_numbers, use_special)
         strength_analysis = check_password_strength(password)
         
+        # Сохраняем в историю
+        save_password_history(session['username'], password, length, strength_analysis['strength'])
+        
         return jsonify({
             'success': True,
             'password': password,
@@ -295,25 +431,130 @@ def generate_advanced():
             'error': str(e)
         })
 
-@app.route('/users')
-def users():
-    """Страница со списком пользователей"""
+@app.route('/clear-history', methods=['POST'])
+def clear_history():
+    """Очистка истории паролей пользователя"""
     if 'username' not in session:
-        return redirect(url_for('login'))
+        return jsonify({'success': False, 'error': 'Требуется авторизация'})
     
-    users_list = []
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT username, password FROM users ORDER BY username')
-        rows = cursor.fetchall()
+        cursor.execute('DELETE FROM password_history WHERE username = ?', (session['username'],))
+        conn.commit()
         conn.close()
-        
-        users_list = [{'username': row['username'], 'password': row['password']} for row in rows]
+        return jsonify({'success': True, 'message': 'История очищена'})
     except Exception as e:
-        users_list = [{'username': f"Ошибка при чтении базы данных: {str(e)}", 'password': ''}]
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/users')
+def users():
+    """Страница менеджера паролей"""
+    if 'username' not in session:
+        return redirect(url_for('login'))
     
-    return render_template('users.html', users=users_list, username=session['username'])
+    # Получаем записи из базы данных
+    password_entries = get_password_entries(session['username'])
+    
+    return render_template('users.html', 
+                         password_entries=password_entries, 
+                         username=session['username'])
+
+@app.route('/add-password-entry', methods=['POST'])
+def add_password_entry():
+    """Добавление новой записи в менеджер паролей"""
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Требуется авторизация'})
+    
+    try:
+        data = request.json
+        
+        service = data.get('service', '').strip()
+        login = data.get('login', '').strip()
+        password = data.get('password', '').strip()
+        
+        if not service or not login or not password:
+            return jsonify({
+                'success': False,
+                'error': 'Заполните все поля'
+            })
+        
+        if save_password_entry(session['username'], service, login, password):
+            return jsonify({
+                'success': True,
+                'message': 'Запись успешно добавлена'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Ошибка при сохранении записи'
+            })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Произошла ошибка: {str(e)}'
+        })
+
+@app.route('/delete-password-entry/<int:entry_id>', methods=['POST'])
+def delete_password_entry_route(entry_id):
+    """Удаление записи из менеджера паролей"""
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Требуется авторизация'})
+    
+    try:
+        if delete_password_entry(entry_id, session['username']):
+            return jsonify({
+                'success': True,
+                'message': 'Запись успешно удалена'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Ошибка при удалении записи'
+            })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Произошла ошибка: {str(e)}'
+        })
+
+@app.route('/update-password-entry/<int:entry_id>', methods=['POST'])
+def update_password_entry_route(entry_id):
+    """Обновление записи в менеджере паролей"""
+    if 'username' not in session:
+        return jsonify({'success': False, 'error': 'Требуется авторизация'})
+    
+    try:
+        data = request.json
+        
+        service = data.get('service', '').strip()
+        login = data.get('login', '').strip()
+        password = data.get('password', '').strip()
+        
+        if not service or not login or not password:
+            return jsonify({
+                'success': False,
+                'error': 'Заполните все поля'
+            })
+        
+        if update_password_entry(entry_id, session['username'], service, login, password):
+            return jsonify({
+                'success': True,
+                'message': 'Запись успешно обновлена'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Ошибка при обновлении записи'
+            })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Произошла ошибка: {str(e)}'
+        })
 
 @app.route('/logout')
 def logout():

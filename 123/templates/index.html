@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+    <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -52,6 +52,31 @@
 
                 <div id="result" class="result-container"></div>
             </div>
+
+            <!-- Блок истории паролей -->
+            <div class="history-section">
+                <div class="history-header">
+                    <h3>История генерации паролей</h3>
+                    <button type="button" onclick="clearHistory()" class="btn btn-clear">Очистить историю</button>
+                </div>
+                
+                {% if history %}
+                    <div class="history-list">
+                        <div class="history-item header">
+                            <span class="history-password">Пароль</span>
+                            <span class="history-user_name">Пользователь</span>
+                        </div>
+                        {% for item in history %}
+                            <div class="history-item">
+                                <span class="history-password" title="{{ item.password }}">{{ item.password[:20] }}{% if item.password|length > 20 %}...{% endif %}</span>
+                                <span class="history-length">{{ username }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="no-history">История паролей пуста</p>
+                {% endif %}
+            </div>
         </div>
     </div>
 
@@ -75,6 +100,10 @@
 
                 const result = await response.json();
                 displayResult(result);
+                if (result.success) {
+                    // Перезагружаем страницу для обновления истории
+                    setTimeout(() => location.reload(), 1000);
+                }
             } catch (error) {
                 document.getElementById('result').innerHTML = 
                     `<div class="alert alert-error"><strong>Ошибка:</strong> ${error.message}</div>`;
@@ -100,6 +129,10 @@
 
                 const result = await response.json();
                 displayAdvancedResult(result);
+                if (result.success) {
+                    // Перезагружаем страницу для обновления истории
+                    setTimeout(() => location.reload(), 1000);
+                }
             } catch (error) {
                 document.getElementById('result').innerHTML = 
                     `<div class="alert alert-error"><strong>Ошибка:</strong> ${error.message}</div>`;
@@ -155,6 +188,33 @@
             }).catch(err => {
                 alert('Ошибка копирования: ' + err);
             });
+        }
+
+        function copyHistoryPassword(password) {
+            copyToClipboard(password);
+        }
+
+        async function clearHistory() {
+            if (confirm('Вы уверены, что хотите очистить историю паролей?')) {
+                try {
+                    const response = await fetch('/clear-history', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        alert('История очищена!');
+                        location.reload();
+                    } else {
+                        alert('Ошибка при очистке истории: ' + result.error);
+                    }
+                } catch (error) {
+                    alert('Ошибка при очистке истории: ' + error.message);
+                }
+            }
         }
     </script>
 </body>
